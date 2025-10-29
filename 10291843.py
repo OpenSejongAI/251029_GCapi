@@ -4,44 +4,49 @@ from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 
-# 0. Google API Å° ¼³Á¤ (»çÀü¿¡ ¹ß±Ş¹ŞÀº Å°¸¦ È¯°æ º¯¼ö·Î ¼³Á¤)
+from dotenv import load_dotenv
+
+load_dotenv()
+api_key = os.getenv("GOOGLE_API_KEY")
+
+# 0. Google API í‚¤ ì„¤ì • (ì‚¬ì „ì— ë°œê¸‰ë°›ì€ í‚¤ë¥¼ í™˜ê²½ ë³€ìˆ˜ë¡œ ì„¤ì •)
 # os.environ["GOOGLE_API_KEY"] = "YOUR_GOOGLE_API_KEY"
 
-# 1. Áö½Ä º£ÀÌ½º(ÅØ½ºÆ® ÆÄÀÏ) ·Îµå
+# 1. ì§€ì‹ ë² ì´ìŠ¤(í…ìŠ¤íŠ¸ íŒŒì¼) ë¡œë“œ
 with open('club_info.txt', 'r', encoding='utf-8') as f:
     club_info = f.read()
 
-# 2. ÅØ½ºÆ®¸¦ ÀÛÀº Á¶°¢(Chunk)À¸·Î ºĞÇÒ
+# 2. í…ìŠ¤íŠ¸ë¥¼ ì‘ì€ ì¡°ê°(Chunk)ìœ¼ë¡œ ë¶„í• 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 texts = text_splitter.split_text(club_info)
 
-# 3. Google ÀÓº£µù ¸ğµ¨ ·Îµå ¹× º¤ÅÍ DB »ı¼º
-# ÅØ½ºÆ® Á¶°¢µéÀ» º¤ÅÍ·Î º¯È¯ÇÏ°í, FAISS µ¥ÀÌÅÍº£ÀÌ½º¿¡ ÀúÀåÇÕ´Ï´Ù.
+# 3. Google ì„ë² ë”© ëª¨ë¸ ë¡œë“œ ë° ë²¡í„° DB ìƒì„±
+# í…ìŠ¤íŠ¸ ì¡°ê°ë“¤ì„ ë²¡í„°ë¡œ ë³€í™˜í•˜ê³ , FAISS ë°ì´í„°ë² ì´ìŠ¤ì— ì €ì¥í•©ë‹ˆë‹¤.
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 vectorstore = FAISS.from_texts(texts, embeddings)
 
-# 4. Google Gemini Pro ¸ğµ¨ ·Îµå
+# 4. Google Gemini Pro ëª¨ë¸ ë¡œë“œ
 llm = ChatGoogleGenerativeAI(model="gemini-pro",
-                             temperature=0.7, # Ã¢ÀÇ¼º Á¶Àı (0¿¡ °¡±î¿ï¼ö·Ï »ç½Ç ±â¹İ)
-                             convert_system_message_to_human=True) # ½Ã½ºÅÛ ¸Ş½ÃÁö¸¦ »ç¶÷ÀÇ ¸Ş½ÃÁöÃ³·³ º¯È¯
+                             temperature=0.7, # ì°½ì˜ì„± ì¡°ì ˆ (0ì— ê°€ê¹Œìš¸ìˆ˜ë¡ ì‚¬ì‹¤ ê¸°ë°˜)
+                             convert_system_message_to_human=True) # ì‹œìŠ¤í…œ ë©”ì‹œì§€ë¥¼ ì‚¬ëŒì˜ ë©”ì‹œì§€ì²˜ëŸ¼ ë³€í™˜
 
-# 5. RAG Ã¼ÀÎ(Chain) »ı¼º
-# retriever: Áú¹®°ú °ü·ÃµÈ ¹®¼­¸¦ º¤ÅÍ DB¿¡¼­ Ã£¾ÆÁÖ´Â ¿ªÇÒ
-# llm: retriever°¡ Ã£Àº Á¤º¸¸¦ ¹ÙÅÁÀ¸·Î ´äº¯À» »ı¼ºÇÏ´Â ¿ªÇÒ
+# 5. RAG ì²´ì¸(Chain) ìƒì„±
+# retriever: ì§ˆë¬¸ê³¼ ê´€ë ¨ëœ ë¬¸ì„œë¥¼ ë²¡í„° DBì—ì„œ ì°¾ì•„ì£¼ëŠ” ì—­í• 
+# llm: retrieverê°€ ì°¾ì€ ì •ë³´ë¥¼ ë°”íƒ•ìœ¼ë¡œ ë‹µë³€ì„ ìƒì„±í•˜ëŠ” ì—­í• 
 qa_chain = RetrievalQA.from_chain_type(
     llm=llm,
-    chain_type="stuff", # Ã£Àº ¹®¼­µéÀ» ¸ğµÎ ÇÁ·ÒÇÁÆ®¿¡ ³Ö´Â ¹æ½Ä
+    chain_type="stuff", # ì°¾ì€ ë¬¸ì„œë“¤ì„ ëª¨ë‘ í”„ë¡¬í”„íŠ¸ì— ë„£ëŠ” ë°©ì‹
     retriever=vectorstore.as_retriever()
 )
 
-# 6. Ãªº¿ ½ÇÇà - »ç¿ëÀÚ Áú¹®¿¡ ´äº¯ÇÏ±â
-question = "¿ì¸® µ¿¾Æ¸® MT ¾ğÁ¦ °¡?"
+# 6. ì±—ë´‡ ì‹¤í–‰ - ì‚¬ìš©ì ì§ˆë¬¸ì— ë‹µë³€í•˜ê¸°
+question = "ìš°ë¦¬ ë™ì•„ë¦¬ MT ì–¸ì œ ê°€?"
 response = qa_chain.invoke({"query": question})
 
-print(f"Áú¹®: {response['query']}")
-print(f"´äº¯: {response['result']}")
+print(f"ì§ˆë¬¸: {response['query']}")
+print(f"ë‹µë³€: {response['result']}")
 
-question_2 = "È¸ºñ´Â ¾ó¸¶°í ¾îµğ·Î ³»¾ßÇØ?"
+question_2 = "íšŒë¹„ëŠ” ì–¼ë§ˆê³  ì–´ë””ë¡œ ë‚´ì•¼í•´?"
 response_2 = qa_chain.invoke({"query": question_2})
-print(f"\nÁú¹®: {response_2['query']}")
-print(f"´äº¯: {response_2['result']}")
+print(f"\nì§ˆë¬¸: {response_2['query']}")
+print(f"ë‹µë³€: {response_2['result']}")
