@@ -2,9 +2,9 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
-
+import os
 # 0. Google API 키 설정 (사전에 발급받은 키를 환경 변수로 설정)
-# os.environ["GOOGLE_API_KEY"] = "/Users/yugeon/Downloads/opensai-fc28726591b0.json"
+os.environ["GOOGLE_API_KEY"] = "/Users/yugeon/Downloads/opensai-fc28726591b0.json"
 
 # 1. 지식 베이스(텍스트 파일) 로드
 with open('club_info.txt', 'r', encoding='utf-8') as f:
