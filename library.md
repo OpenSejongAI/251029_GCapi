@@ -1,1 +1,0 @@
-pip install google-generativeai langchain-google-genai langchain faiss-cpu

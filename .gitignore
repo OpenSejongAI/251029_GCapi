@@ -1,2 +1,7 @@
 .idea
 .env
+env
+.DS_Store
+rag_data
+__pycache__
+.faiss_club
