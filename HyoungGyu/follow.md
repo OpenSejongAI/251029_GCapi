@@ -1,12 +1,12 @@
 ### instruction
 
-1. environment.ymlÀ» ÅëÇØ ÄÜ´ÙÈ¯°æ ±¸Ãà
-    - conda env create -f environment.yml (ÅÍ¹Ì³Î¿¡ ¸í·É¾î ÀÔ·ÂÇÏ¿© 'opsi' È¯°æ »ı¼º)
-    - conda activate opsi (À§ ¸í·É¾î¸¦ ÀÔ·ÂÇÏ¿© °¡»óÈ¯°æ È°¼ºÈ­, ¿¡µğÅÍ¿¡¼­ ±âº» °¡»óÈ¯°æ ÁöÁ¤ °¡´É)
-2. gcloud cli È¯°æ °Ë»ç
-    - gcloud config list (³» °èÁ¤ È®ÀÎ)
-    - gcloud services list --enabled (È°¼ºÈ­µÈ API ¸ñ·Ï È®ÀÎ)
-    - gcloud ai endpoints list --region=us-central1 (vertex ai ¿£µåÆ÷ÀÎÆ® ¼³Á¤È®ÀÎ)
-3. rag_data Æú´õ »ı¼º ÈÄ ±× ¾È¿¡ rag°¡ ÂüÁ¶ÇÒ ¹®¼­ Ã·ºÎ
-4. data_loader pythonÆÄÀÏÀ» ÅëÇÑ rag_data ³» ¹®¼­ Å½»ö/ÀĞ±â
-5. Docker ¹èÆ÷
+1. environment.ymlì„ í†µí•´ ì½˜ë‹¤í™˜ê²½ êµ¬ì¶•
+    - conda env create -f environment.yml (í„°ë¯¸ë„ì— ëª…ë ¹ì–´ ì…ë ¥í•˜ì—¬ 'opsi' í™˜ê²½ ìƒì„±)
+    - conda activate opsi (ìœ„ ëª…ë ¹ì–´ë¥¼ ì…ë ¥í•˜ì—¬ ê°€ìƒí™˜ê²½ í™œì„±í™”, ì—ë””í„°ì—ì„œ ê¸°ë³¸ ê°€ìƒí™˜ê²½ ì§€ì • ê°€ëŠ¥)
+2. gcloud cli í™˜ê²½ ê²€ì‚¬
+    - gcloud config list (ë‚´ ê³„ì • í™•ì¸)
+    - gcloud services list --enabled (í™œì„±í™”ëœ API ëª©ë¡ í™•ì¸)
+    - gcloud ai endpoints list --region=us-central1 (vertex ai ì—”ë“œí¬ì¸íŠ¸ ì„¤ì •í™•ì¸)
+3. rag_data í´ë” ìƒì„± í›„ ê·¸ ì•ˆì— ragê°€ ì°¸ì¡°í•  ë¬¸ì„œ ì²¨ë¶€
+4. data_loader pythoníŒŒì¼ì„ í†µí•œ rag_data ë‚´ ë¬¸ì„œ íƒìƒ‰/ì½ê¸°
+5. Docker ë°°í¬
