@@ -202,10 +202,11 @@ def main():
     init_vertex(location=DEFAULT_LOCATION)
 
     # --- [ 여기를 수정합니다 ] ---
-    # 스크립트 파일(.py)이 있는 폴더의 절대 경로
+    # 스크립트 파일(.py) 기준 경로 계산
     SCRIPT_DIR = Path(__file__).resolve().parent
-    # 스크립트 폴더 기준의 rag_data 경로
-    KB_DIR = SCRIPT_DIR / "rag_data"
+    ROOT_DIR = SCRIPT_DIR.parent
+    # 프로젝트 루트의 rag_data 사용
+    KB_DIR = ROOT_DIR / "rag_data"
 
     # 1) 지식 소스 로드 (수정된 경로 사용)
     all_docs = load_all_from_data(KB_DIR)

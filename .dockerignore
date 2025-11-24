@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+
+# Local FAISS index (should be mounted as a volume)
+.faiss_club
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Original environment files
+YuGeon/env1110.yml
+YuGeon/environment.yml
+
+# Local env directory
+env/

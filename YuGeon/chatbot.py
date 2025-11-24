@@ -1,22 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-동아리 챗봇 (Vertex AI + LangChain + FAISS, CLI 인증 기반, 안정판; 멀티파일 지원)
-
-사전 준비:
-1) gcloud 인증
-   $ gcloud auth login
-   $ gcloud config set project <YOUR_PROJECT_ID>
-   (권장) ADC 쿼터 프로젝트 지정:
-   $ gcloud auth application-default set-quota-project <YOUR_PROJECT_ID>
-
-2) 패키지 설치
-   $ python -m pip install --upgrade google-cloud-aiplatform langchain-google-vertexai langchain
-   $ python -m pip install --upgrade langchain-community langchain-text-splitters faiss-cpu
-   $ python -m pip install --upgrade PyPDF2 docx2txt python-docx pandas
-
-3) 지식 소스 준비
-   - 프로젝트의 rag_data/ 폴더에 .txt .md .pdf .docx .csv 파일을 넣으세요.
-   - TXT/MD는 CP949/EUC-KR도 자동 감지합니다(UTF-8 권장).
+동아리 챗봇 (Vertex AI + LangChain + FAISS, Flask API 기반)
 
 환경변수(선택):
   VERTEX_LOCATION       기본 us-central1
@@ -25,6 +9,7 @@
   LLM_TEMPERATURE       기본 0.4
   RETRIEVER_K           기본 5
   FAISS_DIR             기본 ./.faiss_club
+  RAG_DATA_PATH         기본 ../rag_data
 """
 import sys
 try:
@@ -34,10 +19,11 @@ except Exception:
     pass
 
 import os
-import sys
-import traceback
 from typing import Optional
 from pathlib import Path
+
+# Flask
+from flask import Flask, request, jsonify
 
 # Vertex AI & LangChain
 from google.cloud import aiplatform
@@ -57,22 +43,16 @@ VERTEX_MODEL = os.getenv("VERTEX_MODEL", "gemini-2.5-pro")
 VERTEX_EMBEDDING = os.getenv("VERTEX_EMBEDDING", "gemini-embedding-001")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.4"))
 RETRIEVER_K = int(os.getenv("RETRIEVER_K", "5"))
-FAISS_DIR = os.getenv("FAISS_DIR", "../.faiss_club")
+FAISS_DIR = os.getenv("FAISS_DIR", "./.faiss_club") # Docker 컨테이너 내 경로
+RAG_DATA_PATH = os.getenv("RAG_DATA_PATH", "../rag_data") # Docker 컨테이너 내 경로
 
 
 # ---------- Vertex 초기화 ----------
 def init_vertex(project: Optional[str] = None, location: str = DEFAULT_LOCATION) -> str:
-    """
-    gcloud CLI(ADC) 기반 인증 자동 사용.
-    프로젝트는 google.auth.default()에서 감지하거나 인자로 지정.
-    """
     creds, detected_project = google.auth.default()
     project_id = project or detected_project
     if not project_id:
-        raise RuntimeError(
-            "프로젝트 ID를 찾을 수 없습니다. gcloud 설정을 확인하세요.\n"
-            "예) gcloud config set project <YOUR_PROJECT_ID>"
-        )
+        raise RuntimeError("프로젝트 ID를 찾을 수 없습니다. gcloud나 GOOGLE_APPLICATION_CREDENTIALS 설정을 확인하세요.")
     aiplatform.init(project=project_id, location=location)
     print(f"[Vertex AI] 프로젝트: {project_id}, 리전: {location}")
     return project_id
@@ -80,54 +60,42 @@ def init_vertex(project: Optional[str] = None, location: str = DEFAULT_LOCATION)
 
 # ---------- RAG 체인 ----------
 def build_rag_chain(
-        kb_text: str,
+        rag_data_path: str,
         location: str = DEFAULT_LOCATION,
         chunk_size: int = 1000,
         chunk_overlap: int = 100,
 ):
-    """
-    텍스트 분할 → 임베딩 → (FAISS 저장/재사용) → Retriever → ChatVertexAI(Gemini 2.5 Pro)
-    """
-    # 1) Split
-    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    texts = splitter.split_text(kb_text)
-    if not texts:
-        raise ValueError("지식 텍스트 분할 실패. rag_data 내 파일 내용을 확인하세요.")
-    if len(texts) < 3:
-        print("[경고] 지식 조각이 매우 적습니다. 자료를 더 넣는 것을 권장합니다.")
-
-    # 2) Embeddings (Vertex AI)
     embeddings = VertexAIEmbeddings(model_name=VERTEX_EMBEDDING, location=location)
-
-    # 3) Vector store (FAISS) — 저장/재사용
     faiss_path = Path(FAISS_DIR)
     faiss_path.mkdir(parents=True, exist_ok=True)
     faiss_index_file = faiss_path / "index.faiss"
 
     if faiss_index_file.exists():
-        # 기존 인덱스 로드
         vectorstore = FAISS.load_local(
             str(faiss_path),
             embeddings,
-            allow_dangerous_deserialization=True,  # FAISS 로드 시 필요
+            allow_dangerous_deserialization=True,
         )
         print(f"[FAISS] 기존 인덱스 로드: {faiss_path}")
     else:
-        # 새 인덱스 생성 후 저장
+        print(f"[FAISS] 인덱스 없음. '{rag_data_path}'에서 데이터 로드 시작...")
+        kb_text = load_all_from_data(rag_data_path)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        texts = splitter.split_text(kb_text)
+        if not texts:
+            raise ValueError("지식 텍스트 분할 실패. rag_data 내 파일 내용을 확인하세요.")
+        
+        print("[FAISS] 임베딩 및 인덱스 생성 중...")
         vectorstore = FAISS.from_texts(texts, embeddings)
         vectorstore.save_local(str(faiss_path))
-        print(f"[FAISS] 인덱스 생성 및 저장: {faiss_path}")
+        print(f"[FAISS] 인덱스 생성 및 저장 완료: {faiss_path}")
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVER_K})
-
-    # 4) LLM (Gemini on Vertex AI)
     llm = ChatVertexAI(
         model_name=VERTEX_MODEL,
         location=location,
         temperature=LLM_TEMPERATURE,
     )
-
-    # 5) RAG Chain (LCEL 기반, langchain.chains 미사용)
     prompt = ChatPromptTemplate.from_template(
         "너는 동아리 안내 챗봇이다. 주어진 컨텍스트로만 답하라. "
         "모르면 '자료에 없습니다'라고 간단히 말하라.\n\n"
@@ -135,7 +103,6 @@ def build_rag_chain(
     )
 
     def format_docs(docs):
-        # page_content가 없을 수도 있어 안전 처리
         return "\n\n".join(getattr(d, "page_content", "") or "" for d in docs)
 
     qa_chain = (
@@ -145,53 +112,44 @@ def build_rag_chain(
     )
     return qa_chain
 
+# ---------- Flask 앱 설정 ----------
+app = Flask(__name__)
 
-# ---------- 대화 루프 ----------
-def interactive_loop(qa_chain):
-    print("\n[동아리 챗봇] 준비 완료! (종료: /quit)")
-    while True:
-        try:
-            q = input("\n질문 > ").strip()
-            if not q:
-                continue
-            if q.lower() in {"/q", "/quit", "quit", "exit"}:
-                print("종료합니다. 👋")
-                break
-
-            # LCEL 체인은 입력 문자열 q를 그대로 받아 'question'에 전달
-            result = qa_chain.invoke(q)
-            answer = getattr(result, "content", str(result))
-
-            print(f"\n답변\n----\n{answer}")
-
-        except KeyboardInterrupt:
-            print("\n강제 종료되었습니다. 👋")
-            break
-        except Exception as e:
-            print("\n오류가 발생했습니다:")
-            print(e)
-            traceback.print_exc(limit=1)
-
-
-# ---------- 엔트리 포인트 ----------
-def main():
-    # 0) Vertex AI 초기화 (ADC)
+# 서버 시작 시 한 번만 모델과 RAG 체인을 로드합니다.
+print("[Flask] 서버 초기화 시작...")
+try:
     init_vertex(location=DEFAULT_LOCATION)
+    qa_chain = build_rag_chain(RAG_DATA_PATH, location=DEFAULT_LOCATION)
+    print("[Flask] 서버 준비 완료!")
+except Exception as e:
+    print(f"[Flask] 초기화 실패: {e}", file=sys.stderr)
+    qa_chain = None # 초기화 실패 시 qa_chain을 None으로 설정
 
-    # 1) 지식 소스 로드 (rag_data 폴더 전체)
-    kb_text = load_all_from_data("../rag_data")
+@app.route("/")
+def index():
+    return "챗봇 API 서버가 실행 중입니다. /ask 엔드포인트에 POST 요청을 보내세요.", 200
 
-    # 2) RAG 체인 구성
-    qa_chain = build_rag_chain(kb_text, location=DEFAULT_LOCATION)
+@app.route("/ask", methods=["POST"])
+def ask():
+    if not qa_chain:
+        return jsonify({"error": "서버가 초기화되지 않았습니다. 로그를 확인하세요."}), 500
 
-    # 3) 대화 루프
-    interactive_loop(qa_chain)
+    req_data = request.get_json()
+    if not req_data or "question" not in req_data:
+        return jsonify({"error": "요청 형식이 잘못되었습니다. 'question' 필드가 필요합니다."}), 400
 
+    question = req_data["question"]
+    if not question:
+        return jsonify({"error": "'question' 필드는 비워둘 수 없습니다."}), 400
 
-if __name__ == "__main__":
     try:
-        main()
-    except Exception as exc:
-        print("\n[프로그램 오류]")
-        print(exc)
-        sys.exit(1)
+        result = qa_chain.invoke(question)
+        answer = getattr(result, "content", str(result))
+        return jsonify({"answer": answer})
+    except Exception as e:
+        print(f"오류 발생: {e}", file=sys.stderr)
+        return jsonify({"error": "답변을 생성하는 중 오류가 발생했습니다."}), 500
+
+# Gunicorn과 같은 프로덕션 WSGI 서버에서 이 파일을 직접 실행하지 않으므로,
+# if __name__ == "__main__": app.run() 블록은 로컬 테스트용으로만 사용되며,
+# 프로덕션 배포 시에는 필요하지 않습니다.
