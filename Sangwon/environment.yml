@@ -1,6 +1,7 @@
 name: 'opsi'
 channels:
   - defaults
+  - conda-forge
   - https://repo.anaconda.com/pkgs/main
   - https://repo.anaconda.com/pkgs/r
 dependencies:

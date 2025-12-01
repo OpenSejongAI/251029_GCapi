@@ -1,31 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 동아리 챗봇 (Vertex AI + LangChain + FAISS, CLI 인증 기반, 안정판; 멀티파일 지원)
-
-사전 준비:
-1) gcloud 인증
-   $ gcloud auth login
-   $ gcloud config set project <YOUR_PROJECT_ID>
-   (권장) ADC 쿼터 프로젝트 지정:
-   $ gcloud auth application-default set-quota-project <YOUR_PROJECT_ID>
-
-2) 패키지 설치
-   $ python -m pip install --upgrade google-cloud-aiplatform langchain-google-vertexai langchain
-   $ python -m pip install --upgrade langchain-community langchain-text-splitters faiss-cpu
-   $ python -m pip install --upgrade PyPDF2 docx2txt python-docx pandas
-
-3) 지식 소스 준비
-   - 프로젝트의 rag_data/ 폴더에 .txt .md .pdf .docx .csv 파일을 넣으세요.
-   - TXT/MD는 CP949/EUC-KR도 자동 감지합니다(UTF-8 권장).
-
-환경변수(선택):
-  VERTEX_LOCATION       기본 us-central1
-  VERTEX_MODEL          기본 gemini-2.5-pro
-  VERTEX_EMBEDDING      기본 gemini-embedding-001
-  LLM_TEMPERATURE       기본 0.4
-  RETRIEVER_K           기본 5
-  FAISS_DIR             기본 ./.faiss_club
+웹 서버(FastAPI, 카카오 스킬 서버) / CLI 양쪽에서 공통으로 사용할 수 있도록
+get_qa_chain(), answer() 를 제공한다.
 """
+
 import sys
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -34,8 +13,9 @@ except Exception:
     pass
 
 import os
-import sys
 import traceback
+import time
+from functools import lru_cache
 from typing import Optional
 from pathlib import Path
 
@@ -56,8 +36,12 @@ DEFAULT_LOCATION = os.getenv("VERTEX_LOCATION", "us-central1")
 VERTEX_MODEL = os.getenv("VERTEX_MODEL", "gemini-2.5-pro")
 VERTEX_EMBEDDING = os.getenv("VERTEX_EMBEDDING", "gemini-embedding-001")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.4"))
+
 RETRIEVER_K = int(os.getenv("RETRIEVER_K", "5"))
-FAISS_DIR = os.getenv("FAISS_DIR", "../.faiss_club")
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_FAISS_DIR = SCRIPT_DIR / ".faiss_club"
+FAISS_DIR = os.getenv("FAISS_DIR", str(DEFAULT_FAISS_DIR))
 
 
 # ---------- Vertex 초기화 ----------
@@ -79,55 +63,58 @@ def init_vertex(project: Optional[str] = None, location: str = DEFAULT_LOCATION)
 
 
 # ---------- RAG 체인 ----------
+
 def build_rag_chain(
-        kb_text: str,
-        location: str = DEFAULT_LOCATION,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 100,
+    documents: list,
+    location: str = DEFAULT_LOCATION,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 100,
 ):
     """
-    텍스트 분할 → 임베딩 → (FAISS 저장/재사용) → Retriever → ChatVertexAI(Gemini 2.5 Pro)
+    (문서 리스트) 분할 → 임베딩 → (FAISS 저장/재사용) → retriever + LLM 체인 생성
     """
-    # 1) Split
-    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    texts = splitter.split_text(kb_text)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    texts = splitter.split_documents(documents)
+
     if not texts:
         raise ValueError("지식 텍스트 분할 실패. rag_data 내 파일 내용을 확인하세요.")
     if len(texts) < 3:
         print("[경고] 지식 조각이 매우 적습니다. 자료를 더 넣는 것을 권장합니다.")
 
-    # 2) Embeddings (Vertex AI)
-    embeddings = VertexAIEmbeddings(model_name=VERTEX_EMBEDDING, location=location)
+    # 1) Embeddings (Vertex AI)
+    embeddings = VertexAIEmbeddings(
+        model_name=VERTEX_EMBEDDING,
+        location=location,
+    )
 
-    # 3) Vector store (FAISS) — 저장/재사용
+    # 2) Vector store (FAISS) — 저장/재사용
     faiss_path = Path(FAISS_DIR)
     faiss_path.mkdir(parents=True, exist_ok=True)
     faiss_index_file = faiss_path / "index.faiss"
 
     if faiss_index_file.exists():
-        # 기존 인덱스 로드
         vectorstore = FAISS.load_local(
             str(faiss_path),
             embeddings,
-            allow_dangerous_deserialization=True,  # FAISS 로드 시 필요
+            allow_dangerous_deserialization=True,
         )
         print(f"[FAISS] 기존 인덱스 로드: {faiss_path}")
     else:
-        # 새 인덱스 생성 후 저장
-        vectorstore = FAISS.from_texts(texts, embeddings)
+        vectorstore = FAISS.from_documents(texts, embeddings)
         vectorstore.save_local(str(faiss_path))
         print(f"[FAISS] 인덱스 생성 및 저장: {faiss_path}")
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": RETRIEVER_K})
 
-    # 4) LLM (Gemini on Vertex AI)
+    # 3) LLM + 프롬프트
     llm = ChatVertexAI(
         model_name=VERTEX_MODEL,
         location=location,
         temperature=LLM_TEMPERATURE,
     )
-
-    # 5) RAG Chain (LCEL 기반, langchain.chains 미사용)
     prompt = ChatPromptTemplate.from_template(
         "너는 동아리 안내 챗봇이다. 주어진 컨텍스트로만 답하라. "
         "모르면 '자료에 없습니다'라고 간단히 말하라.\n\n"
@@ -135,34 +122,79 @@ def build_rag_chain(
     )
 
     def format_docs(docs):
-        # page_content가 없을 수도 있어 안전 처리
         return "\n\n".join(getattr(d, "page_content", "") or "" for d in docs)
 
     qa_chain = (
-            {"context": retriever | format_docs, "question": RunnablePassthrough()}
-            | prompt
-            | llm
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
     )
     return qa_chain
 
 
-# ---------- 대화 루프 ----------
-def interactive_loop(qa_chain):
-    print("\n[동아리 챗봇] 준비 완료! (종료: /quit)")
+# ---------- 전역 RAG 체인 (웹/CLI 공통) ----------
+
+@lru_cache(maxsize=1)
+def get_qa_chain():
+    """
+    Vertex 초기화 + 지식 로드 + RAG 체인 생성.
+    서버에서 여러 번 호출돼도 실제로는 한 번만 초기화되도록 lru_cache 사용.
+    """
+    # 0) Vertex AI 초기화 (ADC)
+    init_vertex(location=DEFAULT_LOCATION)
+
+    # 1) 지식 소스 로드
+    kb_dir = SCRIPT_DIR / "rag_data"
+    all_docs = load_all_from_data(kb_dir)
+
+    # 2) RAG 체인 구성
+    qa_chain = build_rag_chain(all_docs, location=DEFAULT_LOCATION)
+    print("[RAG] qa_chain 초기화 완료")
+    return qa_chain
+
+
+def answer(question: str) -> str:
+    """
+    외부(FastAPI, 카카오, Flask 등)에서 사용할 메인 엔트리.
+    질문 문자열을 받아 답변 문자열만 반환.
+    """
+    qa_chain = get_qa_chain()
+
+    start_time = time.time()
+    result = qa_chain.invoke(question)
+    end_time = time.time()
+
+    # LangChain 결과 객체에서 content만 꺼내기
+    answer_text = getattr(result, "content", str(result))
+    print(f"[RAG] 질문 처리 완료 (응답 시간: {end_time - start_time:.2f}초)")
+    return answer_text
+
+
+# ---------- 대화 루프 (CLI용) ----------
+
+def interactive_loop():
+    """
+    터미널에서 직접 챗봇을 사용하고 싶을 때 사용하는 CLI 루프.
+    """
+    qa_chain = get_qa_chain()
+    print("\n[동아리 챗봇] 준비 완료! (종료: /quit)\n")
     while True:
         try:
-            q = input("\n질문 > ").strip()
+            q = input("질문 > ").strip()
             if not q:
                 continue
             if q.lower() in {"/q", "/quit", "quit", "exit"}:
                 print("종료합니다. 👋")
                 break
 
-            # LCEL 체인은 입력 문자열 q를 그대로 받아 'question'에 전달
+            start_time = time.time()
             result = qa_chain.invoke(q)
-            answer = getattr(result, "content", str(result))
+            answer_text = getattr(result, "content", str(result))
+            end_time = time.time()
+            duration = end_time - start_time
 
-            print(f"\n답변\n----\n{answer}")
+            print(f"\n답변\n----\n{answer_text}")
+            print(f"\n(응답 시간: {duration:.2f}초)\n")
 
         except KeyboardInterrupt:
             print("\n강제 종료되었습니다. 👋")
@@ -174,24 +206,16 @@ def interactive_loop(qa_chain):
 
 
 # ---------- 엔트리 포인트 ----------
+
 def main():
-    # 0) Vertex AI 초기화 (ADC)
-    init_vertex(location=DEFAULT_LOCATION)
-
-    # 1) 지식 소스 로드 (rag_data 폴더 전체)
-    kb_text = load_all_from_data("../rag_data")
-
-    # 2) RAG 체인 구성
-    qa_chain = build_rag_chain(kb_text, location=DEFAULT_LOCATION)
-
-    # 3) 대화 루프
-    interactive_loop(qa_chain)
-
-
-if __name__ == "__main__":
+    # CLI로 실행할 때만 사용
     try:
-        main()
+        interactive_loop()
     except Exception as exc:
         print("\n[프로그램 오류]")
         print(exc)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

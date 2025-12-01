@@ -1,26 +1,30 @@
-name: 'opsi'
+name: opsi
 channels:
   - defaults
   - https://repo.anaconda.com/pkgs/main
   - https://repo.anaconda.com/pkgs/r
 dependencies:
-  - bzip2=1.0.8=h80987f9_6
-  - ca-certificates=2025.9.9=hca03da5_0
-  - expat=2.7.1=h313beb8_0
-  - libcxx=20.1.8=hd7fd590_1
-  - libffi=3.4.4=hca03da5_1
-  - libzlib=1.3.1=h5f15de7_0
-  - ncurses=6.5=hee39554_0
-  - openssl=3.0.18=h9b4081a_0
-  - pip=25.2=pyhc872135_1
-  - python=3.11.14=hf701271_0
-  - readline=8.3=h0b18652_0
-  - setuptools=80.9.0=py311hca03da5_0
-  - sqlite=3.50.2=h79febb2_1
-  - tk=8.6.15=hcd8a7d5_0
-  - wheel=0.45.1=py311hca03da5_0
-  - xz=5.6.4=h80987f9_1
-  - zlib=1.3.1=h5f15de7_0
+  - bzip2=1.0.8
+  - ca-certificates
+  - expat
+  - libffi
+  - openssl=3.0.18
+  - pip
+  - python=3.11
+  - setuptools
+  - sqlite
+  - tk
+  - wheel
+  - xz
+  - zlib
+
+  # 여기부터는 윈도우에서 conda가 설치하게 만들 주요 패키지들
+  - numpy
+  - pandas
+  - pyarrow
+  - shapely
+  - tzdata
+
   - pip:
       - aiohappyeyeballs==2.6.1
       - aiohttp==3.13.2
@@ -30,7 +34,7 @@ dependencies:
       - attrs==25.4.0
       - bottleneck==1.6.0
       - cachetools==6.2.1
-      - certifi==2025.10.5
+      - certifi
       - charset-normalizer==3.4.4
       - dataclasses-json==0.6.7
       - docstring-parser==0.17.0
@@ -81,15 +85,14 @@ dependencies:
       - multidict==6.7.0
       - mypy-extensions==1.1.0
       - numexpr==2.14.1
-      - numpy==2.3.4
+      # numpy / pandas / pyarrow / shapely는 여기서 제거됨 (conda가 설치)
       - orjson==3.11.4
       - ormsgpack==1.11.0
       - packaging==25.0
-      - pandas==2.3.3
       - propcache==0.4.1
       - proto-plus==1.26.1
       - protobuf==5.29.5
-      - pyarrow==21.0.0
+      # pyarrow 제거됨 (위에서 conda 설치)
       - pyasn1==0.6.1
       - pyasn1-modules==0.4.2
       - pydantic==2.12.3
@@ -101,12 +104,12 @@ dependencies:
       - python-dateutil==2.9.0.post0
       - python-docx==1.2.0
       - python-dotenv==1.2.1
-      - pytz==2025.2
+      - pytz
       - pyyaml==6.0.3
       - requests==2.32.5
       - requests-toolbelt==1.0.0
       - rsa==4.9.1
-      - shapely==2.1.2
+      # shapely 제거됨 (위에서 conda 설치)
       - six==1.17.0
       - sniffio==1.3.1
       - sqlalchemy==2.0.44
@@ -115,7 +118,7 @@ dependencies:
       - typing-extensions==4.15.0
       - typing-inspect==0.9.0
       - typing-inspection==0.4.2
-      - tzdata==2025.2
+      - tzdata
       - uritemplate==4.2.0
       - urllib3==2.5.0
       - validators==0.35.0
@@ -123,4 +126,3 @@ dependencies:
       - xxhash==3.6.0
       - yarl==1.22.0
       - zstandard==0.25.0
-prefix: /opt/anaconda3/envs/1029

@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+google-cloud-aiplatform
+langchain
+langchain-google-vertexai
+langchain-community
+langchain-text-splitters
+faiss-cpu
+PyPDF2
+python-docx
+docx2txt
+pandas
+python-dotenv
+pypdf
