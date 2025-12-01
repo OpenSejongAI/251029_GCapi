@@ -37,7 +37,7 @@ VERTEX_MODEL = os.getenv("VERTEX_MODEL", "gemini-2.5-pro")
 VERTEX_EMBEDDING = os.getenv("VERTEX_EMBEDDING", "gemini-embedding-001")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.4"))
 
-RETRIEVER_K = int(os.getenv("RETRIEVER_K", "5"))
+RETRIEVER_K = int(os.getenv("RETRIEVER_K", "3"))
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_FAISS_DIR = SCRIPT_DIR / ".faiss_club"
